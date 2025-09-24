@@ -1,0 +1,8 @@
+pandas
+mygene
+matplotlib
+scipy
+seaborn
+umap
+umap-learn
+scikit-learn

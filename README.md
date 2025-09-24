@@ -6,10 +6,11 @@
 
 **Question:** Does loss of Trem2 disrupt brain cell communication networks in a way that increases vulnerability to Alzheimer’s disease?
 
-Pip packages installed: pandas and mygene
-Ran script _id-to-geneName-script.py_ in order to replace ensemble id with gene names, output results to expression_with_gene_names.tsv
+installed packges from requirements.txt
 
-To analyze expression matrix, install matplotlib and scipy pip package
+run id-to-geneName-script.py to get new tsv (expression_with_gene_names.tsv)
+
+run expression-matrix-script.py to get summary of findings
 
 summary of findings:
 Matrix size: 41249 genes × 483 samples
@@ -24,4 +25,4 @@ min 0.195652
 max 7.519327
 dtype: float64
 
-pip install seaborn, umap, umap-learn, scikit-learn
+run generate-plots.py to get plot
