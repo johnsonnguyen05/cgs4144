@@ -23,6 +23,7 @@ plt.figure(figsize=(8,6))
 gene_medians.plot(kind="density")
 plt.xlabel("Per-gene median expression (log2 scale)")
 plt.title("Density of per-gene median expression")
+plt.savefig("results/density_gene_plot.png")
 plt.show()
 
 # Summary stats
