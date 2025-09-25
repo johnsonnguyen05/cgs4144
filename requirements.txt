@@ -9,3 +9,7 @@ scikit-learn
 pydeseq2
 bioinfokit
 pycomplexheatmap
+gseapy
+goatools
+pandas
+numpy
