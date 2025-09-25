@@ -5,6 +5,8 @@ from pydeseq2.ds import DeseqStats
 from bioinfokit import visuz
 import bioinfokit
 from statsmodels.stats.multitest import multipletests
+import shutil
+
 print(f"Running bioinfokit version: {bioinfokit.__version__}")
 
 print("Step 4.1: Libraries imported successfully.")
@@ -13,6 +15,7 @@ print("Step 4.1: Libraries imported successfully.")
 data_file = "expression_with_gene_names.tsv"
 metadata_file = "refinebio/SRP119064/metadata_SRP119064.tsv"
 
+# --- Data Loading and Preprocessing ---
 expression_df = pd.read_csv(data_file, sep='\t', index_col=0)
 metadata_df = pd.read_csv(metadata_file, sep='\t', index_col=0)
 
@@ -28,6 +31,7 @@ if not all(expression_df.columns == metadata_df.index):
 print(f"Step 4.2: Loaded {expression_df.shape[0]} genes and {expression_df.shape[1]} samples.")
 
 
+# --- Metadata Preparation ---
 # The condition info is in the 'refinebio_subject' column.
 conditions = []
 for subject_info in metadata_df['refinebio_subject']:
@@ -55,6 +59,7 @@ min_counts = 10
 filtered_expression_df = expression_df_filtered[expression_df_filtered.sum(axis=1) >= min_counts]
 print("Step 4.4: Filtered low-count genes.")
 
+# --- DESeq2 Analysis ---
 # Create a DeseqDataSet and run analysis
 counts_df_int = filtered_expression_df.round().astype(int)
 counts_transposed = counts_df_int.T
@@ -71,29 +76,24 @@ dds.deseq2()
 # Compare the 'trem2ko' group against the 'reference' (wt) group
 stat_res = DeseqStats(dds, contrast=("mutation_status", "trem2ko", "reference"))
 
-# 1. Explicitly run the statistical test.
+# Run the statistical test and build the results DataFrame
 stat_res.run_wald_test()
-# 2. Manually build the results DataFrame from the available attributes.
 res_df = pd.DataFrame(
     {
         "baseMean": stat_res.base_mean,
-        # --- START OF FINAL CORRECTION ---
-        # Use .iloc to select the first column from the LFC DataFrame
         "log2FoldChange": stat_res.LFC.iloc[:, 0],
-        # --- END OF FINAL CORRECTION ---
         "lfcSE": stat_res.SE,
         "stat": stat_res.statistics,
         "pvalue": stat_res.p_values,
     }
 )
 # Calculate adjusted p-values, handling NaN values
-# FIX: Use 'fdr_bh' instead of 'BH' for statsmodels
 not_na = res_df['pvalue'].notna()
 res_df.loc[not_na, 'padj'] = multipletests(res_df.loc[not_na, 'pvalue'], method='fdr_bh')[1]
 
 print("    Analysis complete.")
 
-# Save results to TSV
+# --- Save Results ---
 results_dir = "results"
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
@@ -104,7 +104,15 @@ deseq_df_sorted.to_csv(output_path, sep='\t', index=False)
 
 print(f"Step 4.7: Full results table saved to: {output_path}")
 
-# Create a volcano plot
+# --- START OF ADDED CODE ---
+# Save the top 50 differentially expressed genes to a new file
+top_50_genes = deseq_df_sorted.head(50)
+top_50_output_path = os.path.join(results_dir, "top50.tsv")
+top_50_genes.to_csv(top_50_output_path, sep='\t', index=False)
+print(f"    Top 50 differentially expressed genes saved to: {top_50_output_path}")
+# --- END OF ADDED CODE ---
+
+# --- Generate Volcano Plot ---
 res_df_bioinfokit = res_df.reset_index().rename(columns={'index': 'Gene'})
 
 # Remove rows with NaN values in required columns for plotting
@@ -129,7 +137,6 @@ visuz.GeneExpression.volcano(
 )
 
 # Move the volcano plot to the results directory
-import shutil
 volcano_source = "volcano.png"
 volcano_dest = os.path.join(results_dir, "volcano.png")
 if os.path.exists(volcano_source):
@@ -139,4 +146,4 @@ else:
     print("    Warning: volcano.png not found in current directory")
 
 print("    Volcano plot created successfully with GeneExpression.volcano()")
-print("\nScript finished successfully! ✅")
+print("\nScript finished successfully!")
