@@ -164,33 +164,60 @@ res_df_bioinfokit = res_df.reset_index().rename(columns={'index': 'Gene'})
 # Remove rows with NaN values in required columns for plotting
 res_df_clean = res_df_bioinfokit.dropna(subset=['log2FoldChange', 'padj']).copy()
 
-print("Step 4.8: Generating volcano plot with bioinfokit...")
+print("Step 4.8: Generating volcano plot (custom matplotlib)...")
 print(f"    Using {len(res_df_clean)} genes for plotting (after removing NaN values)")
 
-# use the working method from bioinfokit 2.1.4
-visuz.GeneExpression.volcano(
-    df=res_df_clean, 
-    lfc='log2FoldChange', 
-    pv='padj',
-    lfc_thr=(1.0, 1.0),
-    pv_thr=(0.05, 0.05),
-    show=False,
-    figtype='png',
-    axtickfontsize=12,
-    axlabelfontsize=12,
-    dim=(8, 6),
-    r=300
-)
+# Define thresholds
+lfc_thresh = 1.0
+padj_thresh = 0.05
 
-# move the volcano plot to the results directory
-volcano_source = "volcano.png"
-volcano_dest = os.path.join(results_dir, "volcano.png")
-if os.path.exists(volcano_source):
-    shutil.move(volcano_source, volcano_dest)
-    print(f"    Volcano plot saved to: {volcano_dest}")
-else:
-    print("    Warning: volcano.png not found in current directory")
+# Protect against padj == 0
+padj = res_df_clean['padj'].replace(0, 1e-300)
+neg_log10_padj = -np.log10(padj)
 
-print("    Volcano plot created successfully with GeneExpression.volcano()")
+# Categorize genes
+def category(row):
+    if row['padj'] < padj_thresh and row['log2FoldChange'] >= lfc_thresh:
+        return 'Up'
+    elif row['padj'] < padj_thresh and row['log2FoldChange'] <= -lfc_thresh:
+        return 'Down'
+    else:
+        return 'NotSig'
+
+cats = res_df_clean.apply(category, axis=1)
+res_df_clean['category'] = cats
+res_df_clean['neg_log10_padj'] = neg_log10_padj
+
+# Colors for categories
+colors = {'Up':'red', 'Down':'blue', 'NotSig':'grey'}
+
+fig, ax = plt.subplots(figsize=(8,6))
+
+# Plot non-significant points first (so significant are on top)
+for cat in ['NotSig','Down','Up']:
+    subset = res_df_clean[res_df_clean['category'] == cat]
+    ax.scatter(subset['log2FoldChange'], subset['neg_log10_padj'],
+               c=colors[cat], alpha=0.6, s=10, label=cat)
+
+# Add threshold lines
+ax.axvline(x=lfc_thresh, color='black', linestyle='--', linewidth=0.8)
+ax.axvline(x=-lfc_thresh, color='black', linestyle='--', linewidth=0.8)
+ax.axhline(y=-np.log10(padj_thresh), color='black', linestyle='--', linewidth=0.8)
+
+ax.set_xlabel('log2 Fold Change', fontsize=12)
+ax.set_ylabel('-log10(adjusted p-value)', fontsize=12)
+ax.set_title('Volcano plot: Differential expression', fontsize=14)
+
+# Legend
+legend = ax.legend(title='Key', frameon=True, fontsize=10)
+plt.setp(legend.get_title(), fontsize=11)
+
+# Save directly to results directory
+volcano_dest = os.path.join(results_dir, 'volcano.png')
+plt.tight_layout()
+plt.savefig(volcano_dest, dpi=300)
+plt.close()
+print(f"    Volcano plot saved to: {volcano_dest}")
+print("    Volcano plot created successfully (custom)")
 print("\nScript finished successfully!")
 
