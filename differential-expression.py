@@ -10,7 +10,7 @@ print(f"Running bioinfokit version: {bioinfokit.__version__}")
 print("Step 4.1: Libraries imported successfully.")
 
 
-data_file = "refinebio/SRP119064/SRP119064.tsv"
+data_file = "expression_with_gene_names.tsv"
 metadata_file = "refinebio/SRP119064/metadata_SRP119064.tsv"
 
 expression_df = pd.read_csv(data_file, sep='\t', index_col=0)

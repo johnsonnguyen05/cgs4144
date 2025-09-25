@@ -1,3 +1,4 @@
 /refinebio
-expression_with_gene_names.tsv
+*.tsv
 *.png
+venv

@@ -6,3 +6,5 @@ seaborn
 umap
 umap-learn
 scikit-learn
+pydeseq2
+bioinfokit
