@@ -6,6 +6,9 @@ from bioinfokit import visuz
 import bioinfokit
 from statsmodels.stats.multitest import multipletests
 import shutil
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
 
 print(f"Running bioinfokit version: {bioinfokit.__version__}")
 
@@ -15,7 +18,7 @@ print("Step 4.1: Libraries imported successfully.")
 data_file = "expression_with_gene_names.tsv"
 metadata_file = "refinebio/SRP119064/metadata_SRP119064.tsv"
 
-# --- Data Loading and Preprocessing ---
+# load data and metadata
 expression_df = pd.read_csv(data_file, sep='\t', index_col=0)
 metadata_df = pd.read_csv(metadata_file, sep='\t', index_col=0)
 
@@ -31,7 +34,7 @@ if not all(expression_df.columns == metadata_df.index):
 print(f"Step 4.2: Loaded {expression_df.shape[0]} genes and {expression_df.shape[1]} samples.")
 
 
-# --- Metadata Preparation ---
+# metadata preparation
 # The condition info is in the 'refinebio_subject' column.
 conditions = []
 for subject_info in metadata_df['refinebio_subject']:
@@ -59,7 +62,7 @@ min_counts = 10
 filtered_expression_df = expression_df_filtered[expression_df_filtered.sum(axis=1) >= min_counts]
 print("Step 4.4: Filtered low-count genes.")
 
-# --- DESeq2 Analysis ---
+# DESeq2 analysis
 # Create a DeseqDataSet and run analysis
 counts_df_int = filtered_expression_df.round().astype(int)
 counts_transposed = counts_df_int.T
@@ -93,7 +96,7 @@ res_df.loc[not_na, 'padj'] = multipletests(res_df.loc[not_na, 'pvalue'], method=
 
 print("    Analysis complete.")
 
-# --- Save Results ---
+# save results
 results_dir = "results"
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
@@ -104,15 +107,58 @@ deseq_df_sorted.to_csv(output_path, sep='\t', index=False)
 
 print(f"Step 4.7: Full results table saved to: {output_path}")
 
-# --- START OF ADDED CODE ---
-# Save the top 50 differentially expressed genes to a new file
+# generate top 50 genes data and visual table
+# Save the top 50 differentially expressed genes to a new TSV file
 top_50_genes = deseq_df_sorted.head(50)
 top_50_output_path = os.path.join(results_dir, "top50.tsv")
 top_50_genes.to_csv(top_50_output_path, sep='\t', index=False)
-print(f"    Top 50 differentially expressed genes saved to: {top_50_output_path}")
-# --- END OF ADDED CODE ---
+print(f"    Top 50 differentially expressed genes (data) saved to: {top_50_output_path}")
 
-# --- Generate Volcano Plot ---
+# generate heatmap for top 50 genes
+print("    Generating visual table (heatmap) for top 50 genes...")
+# Get the gene names
+top_50_gene_names = top_50_genes['Gene'].tolist()
+
+# Get normalized counts from dds object.
+# The counts were transposed for DeseqDataSet, so normalized counts have samples as rows and genes as columns.
+normalized_counts = pd.DataFrame(dds.layers['normed_counts'], index=counts_transposed.index, columns=counts_transposed.columns)
+
+# Filter for top 50 genes and log2 transform (add 1 to avoid log(0))
+top_50_norm_counts = normalized_counts[top_50_gene_names]
+log_transformed_counts = np.log2(top_50_norm_counts + 1)
+
+# Transpose so that genes are on the y-axis and samples are on the x-axis
+data_for_heatmap = log_transformed_counts.T
+
+# Create color annotations for samples based on mutation status
+# This helps in visualizing which samples belong to which group
+unique_conditions = metadata_filtered['mutation_status'].unique()
+palette = sns.color_palette("hsv", len(unique_conditions))
+color_map = dict(zip(unique_conditions, palette))
+sample_colors = metadata_filtered['mutation_status'].map(color_map)
+
+# Generate the clustermap. It clusters both genes and samples.
+# z_score=0 normalizes each gene's expression across samples to see relative changes.
+g = sns.clustermap(data_for_heatmap,
+                   z_score=0,
+                   cmap='vlag',
+                   col_colors=sample_colors,
+                   figsize=(12, 18),
+                   yticklabels=True)
+
+# Adjust labels for better readability
+g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xmajorticklabels(), fontsize=8, rotation=90)
+g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_ymajorticklabels(), fontsize=8)
+g.fig.suptitle('Top 50 Differentially Expressed Genes', fontsize=16, y=1.02)
+
+# Save the heatmap to a file
+heatmap_path = os.path.join(results_dir, "top50_heatmap.png")
+plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
+plt.close() # Important to close the figure to free memory
+
+print(f"    Visual table (heatmap) saved to: {heatmap_path}")
+
+# generate volcano plot
 res_df_bioinfokit = res_df.reset_index().rename(columns={'index': 'Gene'})
 
 # Remove rows with NaN values in required columns for plotting
@@ -121,7 +167,7 @@ res_df_clean = res_df_bioinfokit.dropna(subset=['log2FoldChange', 'padj']).copy(
 print("Step 4.8: Generating volcano plot with bioinfokit...")
 print(f"    Using {len(res_df_clean)} genes for plotting (after removing NaN values)")
 
-# Use the working method from bioinfokit 2.1.4
+# use the working method from bioinfokit 2.1.4
 visuz.GeneExpression.volcano(
     df=res_df_clean, 
     lfc='log2FoldChange', 
@@ -136,7 +182,7 @@ visuz.GeneExpression.volcano(
     r=300
 )
 
-# Move the volcano plot to the results directory
+# move the volcano plot to the results directory
 volcano_source = "volcano.png"
 volcano_dest = os.path.join(results_dir, "volcano.png")
 if os.path.exists(volcano_source):
@@ -147,3 +193,4 @@ else:
 
 print("    Volcano plot created successfully with GeneExpression.volcano()")
 print("\nScript finished successfully!")
+
