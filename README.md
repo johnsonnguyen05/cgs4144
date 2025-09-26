@@ -7,6 +7,7 @@
 **Question:** Does loss of Trem2 disrupt brain cell communication networks in a way that increases vulnerability to Alzheimer’s disease?
 
 installed packges from requirements.txt
+provide SRP119064 folder in root
 
 run id-to-geneName-script.py to get new tsv (expression_with_gene_names.tsv)
 
