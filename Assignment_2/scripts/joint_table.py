@@ -2,22 +2,12 @@ import pandas as pd
 import os
 
 def combine_and_analyze_enrichment_data(enrichr_file, prerank_file, wilcoxon_file, output_file, q_value_threshold=0.2):
-    """
-    Combines and analyzes enrichment data from three different methods.
-
-    Args:
-        enrichr_file (str): Path to the Enrichr TSV file.
-        prerank_file (str): Path to the prerank TSV file.
-        wilcoxon_file (str): Path to the Wilcoxon TSV file.
-        output_file (str): Path to save the final combined TSV file.
-        q_value_threshold (float): The threshold for statistical significance.
-    """
     print(f"Reading data from {enrichr_file}, {prerank_file}, and {wilcoxon_file}...")
     
     # Define a dictionary to hold the results from each method
     all_results = {}
 
-    # --- Process Enrichr Disease data ---
+    # Process Enrichr Disease data
     try:
         enrichr_df = pd.read_csv(enrichr_file, sep='\t')
         
@@ -43,7 +33,7 @@ def combine_and_analyze_enrichment_data(enrichr_file, prerank_file, wilcoxon_fil
     except FileNotFoundError:
         print(f"Warning: {enrichr_file} not found. Skipping.")
 
-    # --- Process Prerank Gene data ---
+    # Process Prerank Gene data
     try:
         prerank_df = pd.read_csv(prerank_file, sep='\t')
         
@@ -70,7 +60,7 @@ def combine_and_analyze_enrichment_data(enrichr_file, prerank_file, wilcoxon_fil
     except FileNotFoundError:
         print(f"Warning: {prerank_file} not found. Skipping.")
 
-    # --- Process Wilcoxon Pathway data ---
+    # Process Wilcoxon Pathway data
     try:
         wilcoxon_df = pd.read_csv(wilcoxon_file, sep='\t')
         

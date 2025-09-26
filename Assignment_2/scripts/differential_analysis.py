@@ -1,16 +1,3 @@
-#!/usr/bin/env python3
-"""
-diffexpr_bioinfokit.py
-Differential expression (WT vs Trem2KO) using per-gene Welch's t-test,
-BH multiple-testing correction, and volcano/heatmap plotting.
-
-Outputs:
- - results/diffexp_wt_vs_trem2ko.tsv
- - plots/volcano.png
- - plots/top_genes_heatmap.png --> step 4
-
-CLEAN THIS CODE THOROUGHLY
-"""
 import os
 import sys
 import pandas as pd
@@ -24,9 +11,7 @@ import seaborn as sns
 os.makedirs("results", exist_ok=True)
 os.makedirs("plots", exist_ok=True)
 
-# -------------------------
-# User-tweakable parameters
-# -------------------------
+# Parameters
 EXPR_FP = "expression_data.tsv"
 META_FP = "SRP119064/metadata_SRP119064.tsv"
 GROUP_COL_IN_META = "refinebio_subject"   # column used to detect Trem2KO vs WT
@@ -41,9 +26,7 @@ PVALUE_CUTOFF = 0.05
 PADJ_CUTOFF = 0.1
 LFC_CUTOFF = 0.25  # abs(log2FC) threshold for "biological significance"
 
-# -------------------------
 # Helper: group normalizer
-# -------------------------
 def assign_group(x):
     x = str(x).lower()
     if "trem2ko" in x or "trem2 ko" in x:
@@ -53,9 +36,7 @@ def assign_group(x):
     else:
         return "Unknown"
 
-# -------------------------
 # Load expression
-# -------------------------
 if not os.path.exists(EXPR_FP):
     print(f"ERROR: expression file not found: {EXPR_FP}", file=sys.stderr)
     sys.exit(1)
@@ -72,9 +53,7 @@ expr = df_expr.iloc[:, 1:].T.copy()
 expr.columns = df_expr.iloc[:, 0].astype(str).values  # gene IDs as columns
 expr.index = sample_columns  # sample names as index
 
-# -------------------------
 # Load metadata and align
-# -------------------------
 if not os.path.exists(META_FP):
     print(f"ERROR: metadata file not found: {META_FP}", file=sys.stderr)
     sys.exit(1)
@@ -108,17 +87,13 @@ if groups.value_counts().get(GROUP_NAME_TREM2, 0) < MIN_SAMPLES_PER_GROUP or \
     raise RuntimeError("Not enough samples in one or both groups for t-test. "
                        "Check metadata group assignment and sample names.")
 
-# -------------------------
 # Optional log-transform
-# -------------------------
 if LOG_TRANSFORM:
     expr_log = np.log2(expr.astype(float) + 1.0)
 else:
     expr_log = expr.astype(float)
 
-# -------------------------
 # Differential test per gene
-# -------------------------
 genes = expr_log.columns
 results = []
 group_mask_trem2 = (groups == GROUP_NAME_TREM2).values
@@ -167,9 +142,7 @@ outfp = "results/differential_expression_data.tsv"
 res_df.to_csv(outfp, sep="\t", index=False)
 print(f"Wrote differential results to: {outfp}")
 
-# -------------------------
 # Volcano plot (bioinfokit if present, else matplotlib)
-# -------------------------
 try:
     from bioinfokit import visuz
 
@@ -247,11 +220,7 @@ except Exception as e:
     plt.close()
     print("Saved volcano plot -> plots/volcano.png")
 
-
-
-# -------------------------
 # Heatmap of top genes
-# -------------------------
 top_genes = res_df.dropna(subset=["padj"]).sort_values("padj").head(TOP_N_GENES_HEATMAP)["gene"].tolist()
 if len(top_genes) == 0:
     print("No genes passed padj filter (or none available). Skipping heatmap.")
