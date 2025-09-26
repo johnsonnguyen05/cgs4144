@@ -1,0 +1,159 @@
+import pandas as pd
+import os
+
+def combine_and_analyze_enrichment_data(enrichr_file, prerank_file, wilcoxon_file, output_file, q_value_threshold=0.2):
+    """
+    Combines and analyzes enrichment data from three different methods.
+
+    Args:
+        enrichr_file (str): Path to the Enrichr TSV file.
+        prerank_file (str): Path to the prerank TSV file.
+        wilcoxon_file (str): Path to the Wilcoxon TSV file.
+        output_file (str): Path to save the final combined TSV file.
+        q_value_threshold (float): The threshold for statistical significance.
+    """
+    print(f"Reading data from {enrichr_file}, {prerank_file}, and {wilcoxon_file}...")
+    
+    # Define a dictionary to hold the results from each method
+    all_results = {}
+
+    # --- Process Enrichr Disease data ---
+    try:
+        enrichr_df = pd.read_csv(enrichr_file, sep='\t')
+        
+        for _, row in enrichr_df.iterrows():
+            term = row['Term']
+            # Initialize entry for the term if it doesn't exist
+            if term not in all_results:
+                all_results[term] = {
+                    'Methods_Included': 0,
+                    'Methods_Found_Significant': 0,
+                }
+            
+            # Populate Enrichr-specific columns
+            all_results[term]['Methods_Included'] += 1
+            all_results[term]['enrichr_Adjusted_P-value'] = row['Adjusted P-value']
+            all_results[term]['enrichr_P-value'] = row['P-value']
+            all_results[term]['enrichr_Combined_Score'] = row['Combined Score']
+            all_results[term]['enrichr_Genes'] = row['Genes']
+            
+            # Check for significance
+            if row['Adjusted P-value'] < q_value_threshold:
+                all_results[term]['Methods_Found_Significant'] += 1
+    except FileNotFoundError:
+        print(f"Warning: {enrichr_file} not found. Skipping.")
+
+    # --- Process Prerank Gene data ---
+    try:
+        prerank_df = pd.read_csv(prerank_file, sep='\t')
+        
+        for _, row in prerank_df.iterrows():
+            # Remove "GO_Biological_Process_2021__" prefix for consistent term names
+            term = row['Term'].split('__')[-1].strip()
+            # Initialize entry for the term if it doesn't exist
+            if term not in all_results:
+                all_results[term] = {
+                    'Methods_Included': 0,
+                    'Methods_Found_Significant': 0,
+                }
+            
+            # Populate Prerank-specific columns
+            all_results[term]['Methods_Included'] += 1
+            all_results[term]['prerank_FDR_q-val'] = row['FDR q-val']
+            all_results[term]['prerank_NOM_p-val'] = row['NOM p-val']
+            all_results[term]['prerank_NES'] = row['NES']
+            all_results[term]['prerank_Lead_genes'] = row['Lead_genes']
+            
+            # Check for significance
+            if row['FDR q-val'] < q_value_threshold:
+                all_results[term]['Methods_Found_Significant'] += 1
+    except FileNotFoundError:
+        print(f"Warning: {prerank_file} not found. Skipping.")
+
+    # --- Process Wilcoxon Pathway data ---
+    try:
+        wilcoxon_df = pd.read_csv(wilcoxon_file, sep='\t')
+        
+        for _, row in wilcoxon_df.iterrows():
+            # Standardize term name by removing "R-HSA-" and other prefixes
+            term = row['Term'].split('R-HSA-')[-1].strip()
+            # Initialize entry for the term if it doesn't exist
+            if term not in all_results:
+                all_results[term] = {
+                    'Methods_Included': 0,
+                    'Methods_Found_Significant': 0,
+                }
+            
+            # Populate Wilcoxon-specific columns
+            all_results[term]['Methods_Included'] += 1
+            all_results[term]['wilcoxon_FDR_q-val'] = row['FDR q-val']
+            all_results[term]['wilcoxon_NOM_p-val'] = row['NOM p-val']
+            all_results[term]['wilcoxon_NES'] = row['NES']
+            all_results[term]['wilcoxon_Lead_genes'] = row['Lead_genes']
+            
+            # Check for significance
+            if row['FDR q-val'] < q_value_threshold:
+                all_results[term]['Methods_Found_Significant'] += 1
+    except FileNotFoundError:
+        print(f"Warning: {wilcoxon_file} not found. Skipping.")
+    
+    # Convert the dictionary to a pandas DataFrame
+    final_df = pd.DataFrame.from_dict(all_results, orient='index')
+    final_df.index.name = 'Term'
+    
+    # Sort the DataFrame by the number of methods that found it significant, descending
+    final_df = final_df.sort_values(by='Methods_Found_Significant', ascending=False)
+    
+    # Clean up column names by replacing underscores with spaces
+    final_df.columns = final_df.columns.str.replace('_', ' ')
+
+    # Ensure the results directory exists
+    # os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    # Save the final DataFrame to a TSV file
+    final_df.to_csv(output_file, sep='\t')
+    print(f"Successfully saved the combined and analyzed table to {output_file}")
+    
+    return final_df
+
+def create_top_enriched_table(combined_df, output_file, num_terms=10):
+    """
+    Creates a new table of the top N most enriched terms from the combined DataFrame.
+
+    Args:
+        combined_df (pd.DataFrame): The DataFrame generated by combine_and_analyze_enrichment_data.
+        output_file (str): Path to save the new TSV file.
+        num_terms (int): The number of top terms to include.
+    """
+    print(f"\nCreating a new table with the top {num_terms} enriched terms...")
+    
+    # Filter for terms that were found significant by at least one method
+    significant_df = combined_df[combined_df['Methods Found Significant'] > 0].copy()
+    
+    # Sort by 'Methods Found Significant' (already done, but good practice) and then by 'Term'
+    significant_df.sort_values(by='Methods Found Significant', ascending=False, inplace=True)
+    
+    # Select the top N terms
+    top_terms_df = significant_df.head(num_terms)
+    
+    # Ensure the results directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
+    # Save the top N DataFrame to a new TSV file
+    top_terms_df.to_csv(output_file, sep='\t')
+    print(f"Successfully saved the top {num_terms} enriched terms to {output_file}")
+
+
+# Example usage with your provided files
+if __name__ == "__main__":
+    enrichr_path = "results/enrichr_disease.tsv"
+    prerank_path = "results/prerank_gene.tsv"
+    wilcoxon_path = "results/wilcoxon_pathway.tsv"
+    
+    # Step 1: Create the full combined table
+    combined_output_path = "joint_table.tsv"
+    full_table = combine_and_analyze_enrichment_data(enrichr_path, prerank_path, wilcoxon_path, combined_output_path)
+    
+    # Step 2: Create the top 10 enriched terms table from the full table
+    top_10_output_path = "results/top10_joint_table.tsv"
+    create_top_enriched_table(full_table, top_10_output_path, num_terms=10)

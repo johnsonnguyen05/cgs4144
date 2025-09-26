@@ -1,3 +1,3 @@
-/refinebio
-*.tsv
+/SRP119064
 venv
+expression_data.tsv
