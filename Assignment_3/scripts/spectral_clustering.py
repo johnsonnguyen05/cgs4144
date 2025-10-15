@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-"""Run K-means clustering on top-5000 gene expression data.
+"""Run Spectral Clustering on top-5000 gene expression data.
 
 Input: Assignment_3/expression_data_top5000.tsv (genes x samples)
 Outputs:
- - Assignment_3/results/kmeans_labels.tsv (sample, cluster)
- - Assignment_3/results/kmeans_pca.png (2D PCA scatter colored by cluster)
+ - Assignment_3/results/spectral_labels.tsv (sample, cluster)
+ - Assignment_3/results/spectral_pca.png (2D PCA scatter colored by cluster)
 
-Usage: python kmeans_clustering.py [--input PATH] [--k K] [--output-dir DIR]
+Usage: python spectral_clustering.py [--input PATH] [--k K] [--output-dir DIR]
 """
 import argparse
 import os
 import sys
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import SpectralClustering
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
@@ -21,9 +21,9 @@ import seaborn as sns
 
 
 def main(argv):
-    p = argparse.ArgumentParser(description="K-means clustering on expression data (top 5000 genes)")
+    p = argparse.ArgumentParser(description="Spectral clustering on expression data (top 5000 genes)")
     p.add_argument("--input", "-i", default="Assignment_3/expression_data_top5000.tsv", help="Input TSV (genes x samples)")
-    p.add_argument("--k", "-k", type=int, default=6, help="Number of clusters (default: 2)")
+    p.add_argument("--k", "-k", type=int, default=6, help="Number of clusters (default: 6)")
     p.add_argument("--output-dir", "-o", default="Assignment_3/results", help="Output directory")
     args = p.parse_args(argv)
 
@@ -50,12 +50,18 @@ def main(argv):
     scaler = StandardScaler()
     expr_scaled = scaler.fit_transform(expr)
 
-    print(f"Running KMeans with k={args.k}")
-    kmeans = KMeans(n_clusters=args.k, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(expr_scaled)
+    print(f"Running Spectral Clustering with k={args.k}")
+    spectral = SpectralClustering(
+        n_clusters=args.k,
+        affinity='nearest_neighbors',  # often better for biological data
+        assign_labels='kmeans',
+        random_state=42,
+        n_neighbors=10
+    )
+    labels = spectral.fit_predict(expr_scaled)
 
     # Save labels
-    out_labels = os.path.join(args.output_dir, "kmeans_labels.tsv")
+    out_labels = os.path.join(args.output_dir, "spectral_labels.tsv")
     pd.DataFrame({"sample": expr.index, "cluster": labels}).to_csv(out_labels, sep="\t", index=False)
     print(f"Wrote cluster labels to {out_labels}")
 
@@ -63,13 +69,13 @@ def main(argv):
     pca = PCA(n_components=2)
     pca_res = pca.fit_transform(expr_scaled)
 
-    plt.figure(figsize=(7,6))
-    sns.scatterplot(x=pca_res[:,0], y=pca_res[:,1], hue=labels, palette="tab10", s=80)
+    plt.figure(figsize=(7, 6))
+    sns.scatterplot(x=pca_res[:, 0], y=pca_res[:, 1], hue=labels, palette="tab10", s=80)
     plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]*100:.1f}%)")
     plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]*100:.1f}%)")
-    plt.title(f"KMeans (k={args.k}) on top-5000 genes")
+    plt.title(f"Spectral Clustering (k={args.k}) on top-5000 genes")
     plt.legend(title="cluster", loc="best")
-    out_plot = os.path.join(args.output_dir, "kmeans_pca.png")
+    out_plot = os.path.join(args.output_dir, "spectral_pca.png")
     plt.tight_layout()
     plt.savefig(out_plot, dpi=200)
     print(f"Wrote PCA plot to {out_plot}")
