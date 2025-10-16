@@ -1,0 +1,4 @@
+method	n_clusters	cluster_sizes
+gmm	6	{np.int64(0): np.int64(55), np.int64(1): np.int64(118), np.int64(2): np.int64(195), np.int64(3): np.int64(8), np.int64(4): np.int64(16), np.int64(5): np.int64(91)}
+kmeans	6	{np.int64(0): np.int64(99), np.int64(1): np.int64(16), np.int64(2): np.int64(102), np.int64(3): np.int64(110), np.int64(4): np.int64(117), np.int64(5): np.int64(39)}
+spectral	6	{np.int64(0): np.int64(45), np.int64(1): np.int64(77), np.int64(2): np.int64(126), np.int64(3): np.int64(180), np.int64(4): np.int64(24), np.int64(5): np.int64(31)}
