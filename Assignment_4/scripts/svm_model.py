@@ -14,7 +14,7 @@ def load_and_preprocess_data(file_path, metadata_file=None):
         # Get the base directory path
         script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
         project_dir = os.path.dirname(os.path.dirname(script_dir))  # cgs4144/
-        metadata_file = os.path.join(project_dir, 'refinebio', 'SRP119064', 'metadata_SRP119064.tsv')
+        metadata_file = os.path.join(project_dir, 'SRP119064', 'metadata_SRP119064.tsv')
     """Load and preprocess expression data."""
     # Load expression data
     data = pd.read_csv(file_path, sep='\t', index_col=0)

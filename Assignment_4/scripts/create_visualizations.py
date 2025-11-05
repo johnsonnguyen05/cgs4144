@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,8 +43,14 @@ def create_dendrogram(data, output_path):
 
 def main():
     # File paths
-    input_file = '../expression_data_top5000.tsv'
-    output_dir = '../results/'
+    script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
+    assignment_dir = os.path.dirname(script_dir)  # Assignment_4/
+    
+    input_file = os.path.join(assignment_dir, 'expression_data_top5000.tsv')
+    output_dir = os.path.join(assignment_dir, 'results/visualization/')
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     
     # Load data
     data = load_data(input_file)
@@ -57,8 +64,8 @@ def main():
     )
     
     # Create visualizations
-    create_heatmap(scaled_data, f'{output_dir}heatmap.png')
-    create_dendrogram(scaled_data, f'{output_dir}dendrogram.png')
+    create_heatmap(scaled_data, os.path.join(output_dir, 'heatmap.png'))
+    create_dendrogram(scaled_data, os.path.join(output_dir, 'dendrogram.png'))
 
 if __name__ == "__main__":
     main()

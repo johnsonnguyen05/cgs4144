@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
@@ -7,21 +8,58 @@ from sklearn.metrics import roc_auc_score, confusion_matrix, roc_curve
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Set random seed for reproducibility
-np.random.seed(42)
+def load_and_preprocess_data(file_path, metadata_file=None):
+    if metadata_file is None:
+        # Get the base directory path
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
+        project_dir = os.path.dirname(os.path.dirname(script_dir))  # cgs4144/
+        metadata_file = os.path.join(project_dir, 'SRP119064', 'metadata_SRP119064.tsv')
+    """Load and preprocess expression data.
 
-def load_and_preprocess_data(file_path):
-    """Load and preprocess the expression data."""
+    Improvements:
+    - Reindex metadata to expression sample IDs and drop samples without labels.
+    - Preserve feature names by returning a DataFrame for X (scaled).
+    - Return the fitted LabelEncoder so callers can inspect classes if needed.
+    """
+    # Load expression data
     data = pd.read_csv(file_path, sep='\t', index_col=0)
-    # Assume the first column contains the labels (modify as needed)
-    X = data.iloc[:, 1:].values
-    y = data.iloc[:, 0].values
-    
-    # Scale the features
+
+    # Transpose the data so samples are rows and genes are columns (DataFrame)
+    X = data.transpose()
+
+    # Load metadata to get labels
+    metadata = pd.read_csv(metadata_file, sep='\t')
+
+    # Extract subject information (genotype and age) as labels
+    # The refinebio_subject column contains information about mouse type (wt vs trem2ko) and age (4m vs 8m)
+    y_series = metadata.set_index('refinebio_accession_code')['refinebio_subject']
+
+    # Align metadata to expression sample IDs; reindex will put NaN where missing
+    y = y_series.reindex(X.index)
+
+    # Drop samples with missing labels
+    missing_mask = y.notna()
+    if missing_mask.sum() != len(y):
+        num_dropped = len(y) - int(missing_mask.sum())
+        print(f"Warning: dropping {num_dropped} samples with missing metadata labels.")
+        X = X.loc[missing_mask]
+        y = y.loc[missing_mask]
+
+    # Convert labels to categorical
+    from sklearn.preprocessing import LabelEncoder
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
+
+    # Scale features and keep column names
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-    
-    return X_scaled, y
+    X_scaled_np = scaler.fit_transform(X)
+    X_scaled = pd.DataFrame(X_scaled_np, index=X.index, columns=X.columns)
+
+    print(f"Loaded {X.shape[0]} samples with {X.shape[1]} features.")
+    print(f"Labels: {le.classes_}")
+    print(f"Label counts:\n{pd.Series(y).value_counts()}")
+
+    return X_scaled, y_encoded, le
 
 def train_and_evaluate_rf(X, y):
     """Train Random Forest model and evaluate its performance."""
@@ -34,15 +72,32 @@ def train_and_evaluate_rf(X, y):
     
     # Make predictions
     y_pred = rf.predict(X_test)
-    y_prob = rf.predict_proba(X_test)[:, 1]
-    
+    # Prepare probabilities and AUC depending on binary vs multiclass
+    y_prob_full = rf.predict_proba(X_test)
+    num_classes = len(np.unique(y))
+
+    if num_classes == 2:
+        # Binary: take probability for class 1
+        y_prob = y_prob_full[:, 1]
+        from sklearn.preprocessing import label_binarize
+        auc = roc_auc_score(y_test, y_prob)
+    else:
+        # Multiclass: compute macro-average AUC using one-vs-rest
+        from sklearn.preprocessing import label_binarize
+        classes = np.unique(y)
+        y_test_binarized = label_binarize(y_test, classes=classes)
+        try:
+            auc = roc_auc_score(y_test_binarized, y_prob_full, average='macro', multi_class='ovr')
+        except Exception:
+            auc = None
+        y_prob = y_prob_full
+
     # Calculate metrics
     accuracy = rf.score(X_test, y_test)
-    auc = roc_auc_score(y_test, y_prob)
     conf_matrix = confusion_matrix(y_test, y_pred)
     
-    # Get feature importance
-    feature_importance = pd.Series(rf.feature_importances_)
+    # Get feature importance (label with feature names)
+    feature_importance = pd.Series(rf.feature_importances_, index=X.columns)
     
     return {
         'model': rf,
@@ -55,9 +110,21 @@ def train_and_evaluate_rf(X, y):
     }
 
 def plot_roc_curve(y_test, y_prob, output_path):
-    """Plot and save ROC curve."""
+    """Plot and save ROC curve.
+
+    This function only plots a ROC curve for binary classification (1D y_prob).
+    For multiclass, the caller should skip or implement per-class curves.
+    """
+    # If y_prob is 2D (multiclass), skip plotting here.
+    if y_prob is None:
+        print("Skipping ROC plot because AUC/probabilities are not available.")
+        return
+    if isinstance(y_prob, np.ndarray) and y_prob.ndim == 2:
+        print("Multiclass probabilities detected; skipping single ROC plot.")
+        return
+
     fpr, tpr, _ = roc_curve(y_test, y_prob)
-    
+
     plt.figure(figsize=(8, 6))
     plt.plot(fpr, tpr)
     plt.plot([0, 1], [0, 1], 'k--')
@@ -89,11 +156,17 @@ def plot_feature_importance(feature_importance, output_path):
 
 def main():
     # File paths
-    input_file = '../expression_data_top5000.tsv'
-    output_dir = '../results/'
+    script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
+    assignment_dir = os.path.dirname(script_dir)  # Assignment_4/
     
-    # Load and preprocess data
-    X, y = load_and_preprocess_data(input_file)
+    input_file = os.path.join(assignment_dir, 'expression_data_top5000.tsv')
+    output_dir = os.path.join(assignment_dir, 'results/random_forest_model/')
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Load and preprocess data (returns scaled DataFrame, encoded labels, and LabelEncoder)
+    X, y, le = load_and_preprocess_data(input_file)
     
     # Train and evaluate model
     results = train_and_evaluate_rf(X, y)
@@ -102,7 +175,11 @@ def main():
     with open(f'{output_dir}random_forest_results.txt', 'w') as f:
         f.write(f"Random Forest Model Results\n")
         f.write(f"Accuracy: {results['accuracy']:.4f}\n")
-        f.write(f"AUC Score: {results['auc']:.4f}\n")
+        if results['auc'] is not None:
+            f.write(f"AUC Score: {results['auc']:.4f}\n")
+        else:
+            f.write(f"AUC Score: None (multiclass or could not be computed)\n")
+        f.write(f"Label classes: {list(le.classes_)}\n")
     
     # Plot and save figures
     plot_roc_curve(results['y_test'], results['y_prob'], 
