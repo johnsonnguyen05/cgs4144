@@ -1,3 +1,0 @@
-SVM Model Results
-Accuracy: 0.9691
-AUC Score: 0.9948

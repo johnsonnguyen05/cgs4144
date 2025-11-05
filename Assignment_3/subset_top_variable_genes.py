@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Subset expression_data.tsv to the top N most variable genes.
 
-Writes output to expression_data_top5000.tsv in the Assignment 3 directory.
+Writes output to expression_data_top5000.tsv in the repository root.
 
 Usage: python subset_top_variable_genes.py [--input PATH] [--output PATH] [--n N]
 """
