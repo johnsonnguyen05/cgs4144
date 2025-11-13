@@ -1,68 +1,17 @@
 import os
+import sys
+import argparse
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, confusion_matrix, roc_curve
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-def load_and_preprocess_data(file_path, metadata_file=None):
-    if metadata_file is None:
-        # Get the base directory path
-        script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
-        project_dir = os.path.dirname(os.path.dirname(script_dir))  # cgs4144/
-        metadata_file = os.path.join(project_dir, 'SRP119064', 'metadata_SRP119064.tsv')
-    """Load and preprocess expression data.
-
-    Improvements:
-    - Reindex metadata to expression sample IDs and drop samples without labels.
-    - Preserve feature names by returning a DataFrame for X (scaled).
-    - Return the fitted LabelEncoder so callers can inspect classes if needed.
-    """
-    # Load expression data
-    data = pd.read_csv(file_path, sep='\t', index_col=0)
-
-    # Transpose the data so samples are rows and genes are columns (DataFrame)
-    X = data.transpose()
-
-    # Load metadata to get labels
-    metadata = pd.read_csv(metadata_file, sep='\t')
-
-    # Extract subject information (genotype and age) as labels
-    # The refinebio_subject column contains information about mouse type (wt vs trem2ko) and age (4m vs 8m)
-    y_series = metadata.set_index('refinebio_accession_code')['refinebio_subject']
-
-    # Align metadata to expression sample IDs; reindex will put NaN where missing
-    y = y_series.reindex(X.index)
-
-    # Drop samples with missing labels
-    missing_mask = y.notna()
-    if missing_mask.sum() != len(y):
-        num_dropped = len(y) - int(missing_mask.sum())
-        print(f"Warning: dropping {num_dropped} samples with missing metadata labels.")
-        X = X.loc[missing_mask]
-        y = y.loc[missing_mask]
-
-    # Convert labels to categorical
-    from sklearn.preprocessing import LabelEncoder
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-
-    # Scale features and keep column names
-    scaler = StandardScaler()
-    X_scaled_np = scaler.fit_transform(X)
-    X_scaled = pd.DataFrame(X_scaled_np, index=X.index, columns=X.columns)
-
-    print(f"Loaded {X.shape[0]} samples with {X.shape[1]} features.")
-    print(f"Labels: {le.classes_}")
-    print(f"Label counts:\n{pd.Series(y).value_counts()}")
-
-    return X_scaled, y_encoded, le
+from utils import load_and_preprocess_data
 
 
-def train_and_evaluate_lr(X, y):
+def train_and_evaluate_lr(X, y, return_full_predictions=False):
     """Train Logistic Regression model and evaluate its performance."""
     # Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -71,9 +20,16 @@ def train_and_evaluate_lr(X, y):
     lr = LogisticRegression(max_iter=1000, random_state=42)
     lr.fit(X_train, y_train)
 
-    # Make predictions
+    # Make predictions on test set
     y_pred = lr.predict(X_test)
     y_prob_full = lr.predict_proba(X_test)
+
+    # Also get predictions on full dataset if requested
+    y_pred_full = None
+    y_prob_full_data = None
+    if return_full_predictions:
+        y_pred_full = lr.predict(X)
+        y_prob_full_data = lr.predict_proba(X)
 
     # Determine binary vs multiclass from fitted model
     num_classes = len(lr.classes_)
@@ -108,15 +64,23 @@ def train_and_evaluate_lr(X, y):
         # fallback
         feature_coef = pd.Series(np.ravel(lr.coef_), index=X.columns[:np.ravel(lr.coef_).shape[0]])
     
-    return {
+    result = {
         'model': lr,
         'accuracy': accuracy,
         'auc': auc,
         'conf_matrix': conf_matrix,
         'y_test': y_test,
         'y_prob': y_prob,
-        'feature_coef': feature_coef
+        'feature_coef': feature_coef,
+        'X_test': X_test,
+        'X_train': X_train
     }
+    
+    if return_full_predictions:
+        result['y_pred_full'] = y_pred_full
+        result['y_prob_full_data'] = y_prob_full_data
+    
+    return result
 
 def plot_roc_curve(y_test, y_prob, output_path):
     """Plot and save ROC curve.
@@ -162,32 +126,57 @@ def plot_feature_coefficients(feature_coef, output_path):
     plt.close()
 
 def main():
+    parser = argparse.ArgumentParser(description='Train Logistic Regression model')
+    parser.add_argument('--input', '-i', type=str, default=None,
+                       help='Input expression data file (default: expression_data_top5000.tsv)')
+    parser.add_argument('--label-type', '-l', type=str, choices=['binary', 'multiclass', 'cluster'],
+                       default='binary', help='Type of labels to predict (default: binary)')
+    parser.add_argument('--cluster-file', '-c', type=str, default=None,
+                       help='Path to cluster labels file (required if label-type=cluster)')
+    parser.add_argument('--output-dir', '-o', type=str, default=None,
+                       help='Output directory (default: results/logistic_regression_model/)')
+    
+    args = parser.parse_args()
+    
     # File paths
-    script_dir = os.path.dirname(os.path.abspath(__file__))  # scripts/
-    assignment_dir = os.path.dirname(script_dir)  # Assignment_4/
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    assignment_dir = os.path.dirname(script_dir)
     
-    input_file = os.path.join(assignment_dir, 'expression_data_top5000.tsv')
-    output_dir = os.path.join(assignment_dir, 'results/logistic_regression_model/')
+    if args.input is None:
+        input_file = os.path.join(assignment_dir, 'expression_data_top5000.tsv')
+    else:
+        input_file = args.input
     
-    # Create output directory if it doesn't exist
+    if args.output_dir is None:
+        label_suffix = f"_{args.label_type}" if args.label_type != 'binary' else ''
+        output_dir = os.path.join(assignment_dir, f'results/logistic_regression_model{label_suffix}/')
+    else:
+        output_dir = args.output_dir
+    
     os.makedirs(output_dir, exist_ok=True)
 
     # Load and preprocess data
-    # load returns DataFrame X (scaled), encoded y, and LabelEncoder
-    X, y, le = load_and_preprocess_data(input_file)
+    X, y, le, sample_names = load_and_preprocess_data(
+        input_file, 
+        label_type=args.label_type,
+        cluster_file=args.cluster_file
+    )
     
     # Train and evaluate model
     results = train_and_evaluate_lr(X, y)
     
     # Save results
-    with open(f'{output_dir}logistic_regression_results.txt', 'w') as f:
+    results_file = os.path.join(output_dir, 'logistic_regression_results.txt')
+    with open(results_file, 'w') as f:
         f.write(f"Logistic Regression Model Results\n")
+        f.write(f"Label Type: {args.label_type}\n")
         f.write(f"Accuracy: {results['accuracy']:.4f}\n")
         if results['auc'] is not None:
             f.write(f"AUC Score: {results['auc']:.4f}\n")
         else:
             f.write(f"AUC Score: None (multiclass or could not be computed)\n")
         f.write(f"Label classes: {list(le.classes_)}\n")
+        f.write(f"Number of classes: {len(le.classes_)}\n")
     
     # Plot and save figures
     plot_roc_curve(results['y_test'], results['y_prob'], 
@@ -196,6 +185,14 @@ def main():
                          os.path.join(output_dir, 'logistic_regression_confusion_matrix.png'))
     plot_feature_coefficients(results['feature_coef'],
                             os.path.join(output_dir, 'logistic_regression_feature_importance.png'))
+    
+    # Save feature coefficients for signature extraction
+    feature_file = os.path.join(output_dir, 'feature_coefficients.tsv')
+    results['feature_coef'].abs().sort_values(ascending=False).to_csv(
+        feature_file, sep='\t', header=['coefficient']
+    )
+    
+    print(f"Results saved to {output_dir}")
 
 if __name__ == "__main__":
     main()

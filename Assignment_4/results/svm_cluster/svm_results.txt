@@ -1,0 +1,6 @@
+SVM Model Results
+Label Type: cluster
+Accuracy: 1.0000
+AUC Score: 1.0000
+Label classes: [np.str_('0'), np.str_('1'), np.str_('2'), np.str_('3'), np.str_('4'), np.str_('5')]
+Number of classes: 6
