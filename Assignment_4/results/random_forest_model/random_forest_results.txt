@@ -1,0 +1,4 @@
+Random Forest Model Results
+Accuracy: 0.9691
+AUC Score: 1.0000
+Label classes: ['cortex, trem2ko, 4m', 'cortex, trem2ko, 8m', 'cortex, wt, 4m', 'cortex, wt, 8m', 'hippocampus, trem2ko, 4m', 'hippocampus, trem2ko, 8m', 'hippocampus, wt, 4m', 'hippocampus, wt, 8m']
